@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ScalperPro Panel</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="kalkulator.js"></script>
+<style>
+  :root { --bg:#0f1424; --panel:#161d33; --input:#0b1020; --fg:#e6e9f2; --muted:#8a93ad; --line:#26304f;
+          --buy:#1f8f4e; --sell:#c23a42; --blue:#2f5bd3; --warn:#f0b429; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; padding:12px 12px 90px; }
+  h1 { font-size:18px; margin:0; color:#6ea8ff; }
+  .top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+  .akun { font:12px/1.4 ui-monospace,Consolas,monospace; color:var(--muted); margin-bottom:10px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .seg { display:flex; gap:6px; margin-bottom:10px; }
+  .seg button { flex:1; padding:11px 0; border:1px solid var(--line); border-radius:10px; background:var(--input);
+                color:var(--muted); font-weight:700; font-size:15px; }
+  .seg button.on.buy { background:var(--buy); color:#fff; border-color:var(--buy); }
+  .seg button.on.sell { background:var(--sell); color:#fff; border-color:var(--sell); }
+  .seg button.on.mode { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; }
+  input { width:100%; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--input);
+          color:var(--fg); font:16px ui-monospace,Consolas,monospace; text-align:right; }
+  input:focus { outline:none; border-color:#6ea8ff; }
+  .full { grid-column:1 / -1; }
+  .hide { display:none; }
+  table { width:100%; border-collapse:collapse; font:13px ui-monospace,Consolas,monospace; }
+  td, th { padding:3px 4px; text-align:right; } th { color:var(--muted); font-weight:500; }
+  td:first-child, th:first-child { text-align:left; }
+  .ring { display:grid; grid-template-columns:auto 1fr auto; gap:4px 10px; margin-top:8px; font:14px ui-monospace,Consolas,monospace; }
+  .pos { color:#3ecf8e; } .neg { color:#ff6b6b; } .mut { color:var(--muted); }
+  .msg { margin-top:8px; font-size:13px; padding:8px; border-radius:8px; }
+  .err { background:rgba(255,107,107,.12); color:#ff9b9b; } .wrn { background:rgba(240,180,41,.12); color:var(--warn); }
+  #kirimUji { width:100%; padding:14px; border:0; border-radius:10px; background:var(--blue); color:#fff; font-weight:700; font-size:16px; }
+  #kirimUji:disabled { opacity:.4; }
+  .note { font-size:12px; color:var(--muted); margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="top"><h1>ScalperPro</h1><span class="mut" id="sym">XAUUSD</span></div>
+<div class="akun" id="akun">—</div>
+
+<div class="seg" id="segSide">
+  <button class="buy" data-v="BUY">▲ BUY LIMIT</button>
+  <button class="sell" data-v="SELL">▼ SELL LIMIT</button>
+</div>
+
+<div class="card">
+  <div class="seg" id="segMode">
+    <button class="mode" data-v="FIXED">LOT TETAP</button>
+    <button class="mode" data-v="RISK">% RISIKO</button>
+  </div>
+  <div class="grid">
+    <div id="boxLot"><label>Lot dasar</label><input id="lot_dasar" inputmode="decimal" value="0.01"></div>
+    <div id="boxRisk" class="hide"><label>Risiko (% saldo bila kena Stoploss)</label><input id="risk_pct" inputmode="decimal" value="1"></div>
+    <div><label>Layer</label><input id="layers" inputmode="numeric" value="6"></div>
+    <div class="full"><label>Mult/Layer (pengali lot dasar, mis. 1,1,1,2,2,2)</label><input id="mult" value="1,1,1,2,2,2" style="text-align:left"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="grid">
+    <div><label id="lblBatas">Floor</label><input id="batas" inputmode="decimal"></div>
+    <div><label>Entry</label><input id="entry" inputmode="decimal"></div>
+    <div><label>Cut Loss</label><input id="cut_loss" inputmode="decimal"></div>
+    <div><label>Stoploss</label><input id="stoploss" inputmode="decimal"></div>
+    <div class="full"><label>TP</label><input id="tp" inputmode="decimal"></div>
+  </div>
+</div>
+
+<div class="card" id="hasil"><span class="mut">Isi kolom untuk melihat kalkulator risiko.</span></div>
+<button id="kirimUji" class="hide">KIRIM KE BOT</button>
+<div class="note">Kalkulator ini pratinjau. Setelah dikirim, bot di PC rumah menghitung ulang dengan harga terkini lalu
+meminta konfirmasi <b>✅ PASANG</b>. Tidak ada order tanpa konfirmasi itu.</div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp && Telegram.WebApp.initData !== undefined ? Telegram.WebApp : null;
+const Q = new URLSearchParams(location.search);
+const num = k => Q.get(k) === null || Q.get(k) === "" ? null : Number(Q.get(k));
+const AKUN = { saldo: num("saldo") || 0, bid: num("bid"), ask: num("ask"), nilai_per_unit: num("npu") || 100,
+  vol_min: num("vmin") || 0.01, vol_step: num("vstep") || 0.01, vol_max: num("vmax") || 100, digits: num("dg") ?? 2,
+  jarak_min: num("jm") || 0, batas_lot_total: num("blt"), aktif: (Q.get("aktif") || "").split(",").filter(Boolean) };
+const T = num("t");
+const $ = id => document.getElementById(id);
+const F = ["lot_dasar","risk_pct","layers","mult","batas","entry","cut_loss","stoploss","tp"];
+let side = "SELL", mode = "FIXED";
+const fmt = (v, d = 2) => Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const usd = v => (v >= 0 ? "+$" : "-$") + fmt(Math.abs(v));
+const pct = v => AKUN.saldo > 0 ? ` (${v >= 0 ? "+" : ""}${(v / AKUN.saldo * 100).toFixed(1)}%)` : "";
+
+$("sym").textContent = Q.get("sym") || "XAUUSD";
+$("akun").textContent = (AKUN.bid ? `Bid ${fmt(AKUN.bid)} · Ask ${fmt(AKUN.ask)} · ` : "") +
+  `Saldo ${fmt(AKUN.saldo)}` + (T ? ` · data ${new Date(T * 1000).toLocaleTimeString("id-ID", {hour:"2-digit", minute:"2-digit"})}` : "") +
+  (AKUN.aktif.length ? ` · SET AKTIF: ${AKUN.aktif.join(", ")}` : "");
+
+function simpan() { try { const o = {side, mode}; F.forEach(k => o[k] = $(k).value); localStorage.setItem("spro_" + side, JSON.stringify(o)); localStorage.setItem("spro_side", side); } catch (e) {} }
+function muat(s) { try { const o = JSON.parse(localStorage.getItem("spro_" + s) || "null"); if (o) { F.forEach(k => { if (o[k] !== undefined) $(k).value = o[k]; }); setMode(o.mode || mode, false); } } catch (e) {} }
+function setSide(s, load = true) {
+  side = s; document.querySelectorAll("#segSide button").forEach(b => b.classList.toggle("on", b.dataset.v === s));
+  $("lblBatas").textContent = s === "BUY" ? "Floor" : "Ceiling"; if (load) muat(s); hitung();
+}
+function setMode(m, re = true) {
+  mode = m; document.querySelectorAll("#segMode button").forEach(b => b.classList.toggle("on", b.dataset.v === m));
+  $("boxLot").classList.toggle("hide", m !== "FIXED"); $("boxRisk").classList.toggle("hide", m !== "RISK"); if (re) hitung();
+}
+document.querySelectorAll("#segSide button").forEach(b => b.onclick = () => { simpan(); setSide(b.dataset.v); });
+document.querySelectorAll("#segMode button").forEach(b => b.onclick = () => setMode(b.dataset.v));
+F.forEach(k => $(k).addEventListener("input", () => { hitung(); simpan(); }));
+
+function data() {
+  const v = k => $(k).value.trim().replace(",", ".");
+  return { side, mode, entry: v("entry"), batas: v("batas"), cut_loss: v("cut_loss"), stoploss: v("stoploss"), tp: v("tp"),
+           layers: v("layers"), mult: $("mult").value.trim(), lot_dasar: v("lot_dasar"), risk_pct: v("risk_pct") };
+}
+let terakhir = null;
+function hitung() {
+  const d = data(), p = hitungRencana({ ...AKUN, ...d });
+  terakhir = p.galat.length ? null : d;
+  let h = "";
+  if (p.harga.length && !p.galat.length) {
+    h += `<table><tr><th>Layer</th><th>Harga</th><th>Lot</th></tr>` +
+      p.harga.map((x, i) => `<tr><td>${i + 1}</td><td>${fmt(x, AKUN.digits)}</td><td>${fmt(p.lot[i])}</td></tr>`).join("") +
+      `<tr><td class="mut">Total</td><td class="mut">rata ${fmt(p.rata_entry)}</td><td><b>${fmt(p.total_lot)}</b></td></tr></table>`;
+    h += `<div class="ring"><span>Kena TP</span><span></span><span class="pos">${usd(p.untung_tp)}${pct(p.untung_tp)}</span>
+      <span>Kena Cut Loss</span><span></span><span class="neg">${usd(p.rugi_cl)}${pct(p.rugi_cl)}</span>
+      <span>Kena Stoploss</span><span></span><span class="neg">${usd(p.rugi_sl)}${pct(p.rugi_sl)}</span>
+      <span class="mut">Hanya layer 1 → TP</span><span></span><span class="mut">${usd(p.untung_tp_l1)}</span></div>`;
+    if (mode === "RISK") h += `<div class="note">Lot dasar hasil hitung: <b>${fmt(p.lot_dasar)}</b></div>`;
+  }
+  if (p.galat.length) h += `<div class="msg err">${p.galat.map(x => "• " + x).join("<br>")}</div>`;
+  if (p.peringatan.length) h += `<div class="msg wrn">${p.peringatan.map(x => "⚠️ " + x).join("<br>")}</div>`;
+  if (AKUN.aktif.includes(side)) { h += `<div class="msg err">• Set ${side} masih aktif di akun — bot akan menolak sampai set itu selesai / dihapus.</div>`; terakhir = null; }
+  $("hasil").innerHTML = h || `<span class="mut">Isi kolom untuk melihat kalkulator risiko.</span>`;
+  if (tg) { terakhir ? tg.MainButton.enable().setParams({ color: side === "BUY" ? "#1f8f4e" : "#c23a42" }) : tg.MainButton.disable(); }
+  else $("kirimUji").disabled = !terakhir;
+}
+function kirim() {
+  if (!terakhir) return;
+  const payload = JSON.stringify(terakhir);
+  if (tg) tg.sendData(payload); else alert("Mode uji (di luar Telegram):\n" + payload);
+}
+if (tg) {
+  tg.ready(); tg.expand();
+  tg.MainButton.setText("KIRIM KE BOT"); tg.MainButton.show(); tg.MainButton.onClick(kirim);
+} else { $("kirimUji").classList.remove("hide"); $("kirimUji").onclick = kirim; }
+let awal = "SELL"; try { awal = localStorage.getItem("spro_side") || "SELL"; } catch (e) {}
+setMode("FIXED", false); setSide(awal);
+</script>
+</body>
+</html>
