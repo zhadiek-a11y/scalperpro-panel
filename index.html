@@ -38,6 +38,8 @@
   #kirimUji { width:100%; padding:14px; border:0; border-radius:10px; background:var(--blue); color:#fff; font-weight:700; font-size:16px; }
   #kirimUji:disabled { opacity:.4; }
   .note { font-size:12px; color:var(--muted); margin-top:6px; }
+  .runner { display:flex; gap:8px; align-items:flex-start; margin-top:10px; font-size:13px; color:var(--warn); }
+  .runner input { width:auto; margin-top:2px; }
 </style>
 </head>
 <body>
@@ -60,6 +62,7 @@
     <div><label>Layer</label><input id="layers" inputmode="numeric" value="6"></div>
     <div class="full"><label>Mult/Layer (pengali lot dasar, mis. 1,1,1,2,2,2)</label><input id="mult" value="1,1,1,2,2,2" style="text-align:left"></div>
   </div>
+  <label class="runner"><input type="checkbox" id="runner"> 🏃 RUNNER — bila ≥2 layer terisi, layer terdalam ikut jalan setelah TP (SL dikunci di TP lalu trailing)</label>
 </div>
 
 <div class="card">
@@ -97,8 +100,8 @@ $("akun").textContent = (AKUN.bid ? `Bid ${fmt(AKUN.bid)} · Ask ${fmt(AKUN.ask)
   `Saldo ${fmt(AKUN.saldo)}` + (T ? ` · data ${new Date(T * 1000).toLocaleTimeString("id-ID", {hour:"2-digit", minute:"2-digit"})}` : "") +
   (AKUN.aktif.length ? ` · SET AKTIF: ${AKUN.aktif.join(", ")}` : "");
 
-function simpan() { try { const o = {side, mode}; F.forEach(k => o[k] = $(k).value); localStorage.setItem("spro_" + side, JSON.stringify(o)); localStorage.setItem("spro_side", side); } catch (e) {} }
-function muat(s) { try { const o = JSON.parse(localStorage.getItem("spro_" + s) || "null"); if (o) { F.forEach(k => { if (o[k] !== undefined) $(k).value = o[k]; }); setMode(o.mode || mode, false); } } catch (e) {} }
+function simpan() { try { const o = {side, mode, runner: $("runner").checked}; F.forEach(k => o[k] = $(k).value); localStorage.setItem("spro_" + side, JSON.stringify(o)); localStorage.setItem("spro_side", side); } catch (e) {} }
+function muat(s) { try { const o = JSON.parse(localStorage.getItem("spro_" + s) || "null"); if (o) { F.forEach(k => { if (o[k] !== undefined) $(k).value = o[k]; }); $("runner").checked = !!o.runner; setMode(o.mode || mode, false); } } catch (e) {} }
 function setSide(s, load = true) {
   side = s; document.querySelectorAll("#segSide button").forEach(b => b.classList.toggle("on", b.dataset.v === s));
   $("lblBatas").textContent = s === "BUY" ? "Floor" : "Ceiling"; if (load) muat(s); hitung();
@@ -110,11 +113,13 @@ function setMode(m, re = true) {
 document.querySelectorAll("#segSide button").forEach(b => b.onclick = () => { simpan(); setSide(b.dataset.v); });
 document.querySelectorAll("#segMode button").forEach(b => b.onclick = () => setMode(b.dataset.v));
 F.forEach(k => $(k).addEventListener("input", () => { hitung(); simpan(); }));
+$("runner").addEventListener("change", () => { hitung(); simpan(); });
 
 function data() {
   const v = k => $(k).value.trim().replace(",", ".");
   return { side, mode, entry: v("entry"), batas: v("batas"), cut_loss: v("cut_loss"), stoploss: v("stoploss"), tp: v("tp"),
-           layers: v("layers"), mult: $("mult").value.trim(), lot_dasar: v("lot_dasar"), risk_pct: v("risk_pct") };
+           layers: v("layers"), mult: $("mult").value.trim(), lot_dasar: v("lot_dasar"), risk_pct: v("risk_pct"),
+           runner: $("runner").checked };
 }
 let terakhir = null;
 function hitung() {
@@ -130,6 +135,7 @@ function hitung() {
       <span>Kena Stoploss</span><span></span><span class="neg">${usd(p.rugi_sl)}${pct(p.rugi_sl)}</span>
       <span class="mut">Hanya layer 1 → TP</span><span></span><span class="mut">${usd(p.untung_tp_l1)}</span></div>`;
     if (mode === "RISK") h += `<div class="note">Lot dasar hasil hitung: <b>${fmt(p.lot_dasar)}</b></div>`;
+    if ($("runner").checked) h += `<div class="msg wrn">🏃 RUNNER aktif — angka "Kena TP" di atas mengasumsikan semua layer tutup di TP; dengan runner, 1 layer (terdalam) tetap jalan.</div>`;
   }
   if (p.galat.length) h += `<div class="msg err">${p.galat.map(x => "• " + x).join("<br>")}</div>`;
   if (p.peringatan.length) h += `<div class="msg wrn">${p.peringatan.map(x => "⚠️ " + x).join("<br>")}</div>`;
